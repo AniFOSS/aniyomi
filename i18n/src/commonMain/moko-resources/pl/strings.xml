@@ -184,8 +184,6 @@
     <string name="cookies_cleared">Ciasteczka usunięte</string>
     <string name="pref_clear_database_summary">Usuń historię wpisów, których nie ma w twojej bibliotece</string>
     <string name="pref_clear_database">Wyczyść bazę danych</string>
-    <string name="pref_enable_acra">Wysyłaj raporty o awariach</string>
-    <string name="pref_acra_summary">Pomaga naprawiać błędy. Żadne wrażliwe dane nie będą wysyłane</string>
     <string name="backup_created">Utworzono kopię zapasową</string>
     <string name="restore_completed">Przywracanie ukończone</string>
     <string name="clear_database_completed">Pozycje usunięte</string>
@@ -588,7 +586,6 @@
     <string name="delete_category">Usuń kategorię</string>
     <string name="internal_error">InternalError: sprawdź log błędów po więcej informacji</string>
     <string name="action_remove_everything">Usuń wszystko</string>
-    <string name="loader_rar5_error">Format RARv5 jest nieobsługiwany</string>
     <string name="error_user_agent_string_blank">Pole user agent nie może być puste</string>
     <string name="update_already_running">Aktualizacja już trwa</string>
     <string name="theme_tidalwave">Tsunami</string>
@@ -1016,4 +1013,26 @@
     <string name="onboarding_guides_returning_user">Reinstalujesz %s?</string>
     <string name="pref_general_summary">Język aplikacji, powiadomienia</string>
     <string name="theme_nord">Nord</string>
+    <string name="relative_time_now">Teraz</string>
+    <string name="theme_sapphire">Szafir</string>
+    <string name="theme_doom">Zagłada</string>
+    <string name="theme_matrix">Matryca</string>
+    <string name="pref_update_only_in_release_period">Przewiduj czas następnego wydania</string>
+    <string name="untrusted_extension_message">Złośliwe rozszerzenia mogą odczytać zapisane dane logowania lub uruchomić dowolny kod.
+\n
+\nUfając temu rozszerzeniu, akceptujesz te ryzyka.</string>
+    <string name="ext_permission_install_apps_warning">Do instalowania rozszerzeń potrzebne są uprawnienia. Kliknij tutaj, aby przyznać dostęp.</string>
+    <string name="ext_revoke_trust">Odwołaj zaufane rozszerzenia pochodzące z nieznanych źródeł</string>
+    <string name="action_replace_repo">Zamień</string>
+    <string name="pref_relative_format_summary">\"%1$s \" zamiast \"%2$s\"</string>
+    <string name="delete_repo_confirmation">Czy chcesz usunąć repozytorium \"%s\"?</string>
+    <string name="action_open_repo">Repozytorium typu open source</string>
+    <string name="label_upcoming">Nadchodzący</string>
+    <string name="action_add_anyway">Dodaj mimo to</string>
+    <string name="action_migrate_duplicate">Przenieś istniejący wpis</string>
+    <string name="information_empty_repos">Nie masz ustawionych repozytoriów.</string>
+    <string name="pref_relative_format">Względne znaczniki czasu</string>
+    <string name="label_extension_repos">Rozszerzenie repos</string>
+    <string name="action_add_repo_message">Dodaj dodatkowe repozytoria do Aniyomi. Powinien być to adres URL kończący się na „index.min.json”\".</string>
+    <string name="error_repo_exists">To repozytorium już istnieje!</string>
 </resources>
