@@ -12,23 +12,28 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -36,16 +41,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.core.animation.doOnEnd
 import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.util.Consumer
-import androidx.core.view.WindowCompat
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.interpolator.view.animation.LinearOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
@@ -53,7 +58,6 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.NavigatorDisposeBehavior
 import cafe.adriel.voyager.navigator.currentOrThrow
-import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.presentation.components.AppStateBanners
 import eu.kanade.presentation.components.DownloadedOnlyBannerBackgroundColor
@@ -65,6 +69,7 @@ import eu.kanade.presentation.more.settings.screen.data.RestoreBackupScreen
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.DefaultNavigatorScreenTransition
 import eu.kanade.tachiyomi.BuildConfig
+import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.core.common.Constants
 import eu.kanade.tachiyomi.data.cache.ChapterCache
@@ -103,6 +108,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
 import mihon.core.migration.Migrator
 import tachiyomi.core.common.i18n.stringResource
@@ -117,7 +123,6 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
-import androidx.compose.ui.graphics.Color.Companion as ComposeColor
 
 class MainActivity : BaseActivity() {
 
@@ -153,18 +158,14 @@ class MainActivity : BaseActivity() {
             return
         }
 
-        // Draw edge-to-edge
-        // TODO: replace with ComponentActivity#enableEdgeToEdge
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-
         setComposeContent {
+            val context = LocalContext.current
+
             val incognito by preferences.incognitoMode().collectAsState()
             val downloadOnly by preferences.downloadedOnly().collectAsState()
             val indexing by downloadCache.isInitializing.collectAsState()
             val indexingAnime by animeDownloadCache.isInitializing.collectAsState()
 
-            // Set status bar color considering the top app state banner
-            val systemUiController = rememberSystemUiController()
             val isSystemInDarkTheme = isSystemInDarkTheme()
             val statusBarBackgroundColor = when {
                 indexing || indexingAnime -> IndexingBannerBackgroundColor
@@ -172,27 +173,13 @@ class MainActivity : BaseActivity() {
                 incognito -> IncognitoModeBannerBackgroundColor
                 else -> MaterialTheme.colorScheme.surface
             }
-            LaunchedEffect(systemUiController, statusBarBackgroundColor) {
-                systemUiController.setStatusBarColor(
-                    color = ComposeColor.Transparent,
-                    darkIcons = statusBarBackgroundColor.luminance() > 0.5,
-                    transformColorForLightContent = { ComposeColor.Black },
-                )
-            }
-
-            // Set navigation bar color
-            val context = LocalContext.current
-            val navbarScrimColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp)
-            LaunchedEffect(systemUiController, isSystemInDarkTheme, navbarScrimColor) {
-                systemUiController.setNavigationBarColor(
-                    color = if (context.isNavigationBarNeedsScrim()) {
-                        navbarScrimColor.copy(alpha = 0.7f)
-                    } else {
-                        ComposeColor.Transparent
-                    },
-                    darkIcons = !isSystemInDarkTheme,
-                    navigationBarContrastEnforced = false,
-                    transformColorForLightContent = { ComposeColor.Black },
+            LaunchedEffect(isSystemInDarkTheme, statusBarBackgroundColor) {
+                // Draw edge-to-edge and set system bars color to transparent
+                val lightStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.BLACK)
+                val darkStyle = SystemBarStyle.dark(Color.TRANSPARENT)
+                enableEdgeToEdge(
+                    statusBarStyle = if (statusBarBackgroundColor.luminance() > 0.5) lightStyle else darkStyle,
+                    navigationBarStyle = if (isSystemInDarkTheme) darkStyle else lightStyle,
                 )
             }
 
@@ -229,13 +216,25 @@ class MainActivity : BaseActivity() {
                     contentWindowInsets = scaffoldInsets,
                 ) { contentPadding ->
                     // Consume insets already used by app state banners
-                    Box(
-                        modifier = Modifier
-                            .padding(contentPadding)
-                            .consumeWindowInsets(contentPadding),
-                    ) {
+                    Box {
                         // Shows current screen
-                        DefaultNavigatorScreenTransition(navigator = navigator)
+                        DefaultNavigatorScreenTransition(
+                            navigator = navigator,
+                            modifier = Modifier
+                                .padding(contentPadding)
+                                .consumeWindowInsets(contentPadding),
+                        )
+                        // Draw navigation bar scrim when needed
+                        if (remember { isNavigationBarNeedsScrim() }) {
+                            Spacer(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .windowInsetsBottomHeight(WindowInsets.navigationBars)
+                                    .alpha(0.8f)
+                                    .background(MaterialTheme.colorScheme.surfaceContainer),
+                            )
+                        }
                     }
                 }
 
@@ -307,6 +306,15 @@ class MainActivity : BaseActivity() {
             ActivityResultContracts.StartActivityForResult(),
         ) { result: ActivityResult ->
             if (result.resultCode == Activity.RESULT_OK) {
+                val animeId = savedInstanceState?.getLong(SAVED_STATE_ANIME_KEY)
+                val episodeId = savedInstanceState?.getLong(SAVED_STATE_EPISODE_KEY)
+
+                if (animeId != null && episodeId != null) {
+                    runBlocking {
+                        ExternalIntents.externalIntents.initAnime(animeId, episodeId)
+                    }
+                }
+
                 ExternalIntents.externalIntents.onActivityResult(result.data)
             }
         }
@@ -324,12 +332,13 @@ class MainActivity : BaseActivity() {
     @Composable
     private fun HandleOnNewIntent(context: Context, navigator: Navigator) {
         LaunchedEffect(Unit) {
-            callbackFlow<Intent> {
+            callbackFlow {
                 val componentActivity = context as ComponentActivity
                 val consumer = Consumer<Intent> { trySend(it) }
                 componentActivity.addOnNewIntentListener(consumer)
                 awaitClose { componentActivity.removeOnNewIntentListener(consumer) }
-            }.collectLatest { handleIntentAction(it, navigator) }
+            }
+                .collectLatest { handleIntentAction(it, navigator) }
         }
     }
 
@@ -386,6 +395,7 @@ class MainActivity : BaseActivity() {
      * When custom animation is used, status and navigation bar color will be set to transparent and will be restored
      * after the animation is finished.
      */
+    @Suppress("Deprecation")
     private fun setSplashScreenExitAnimation(splashScreen: SplashScreen?) {
         val root = findViewById<View>(android.R.id.content)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && splashScreen != null) {
@@ -449,6 +459,7 @@ class MainActivity : BaseActivity() {
             Constants.SHORTCUT_UPDATES -> HomeScreen.Tab.Updates
             Constants.SHORTCUT_HISTORY -> HomeScreen.Tab.History
             Constants.SHORTCUT_SOURCES -> HomeScreen.Tab.Browse(false)
+            Constants.SHORTCUT_ANIMEEXTENSIONS -> HomeScreen.Tab.Browse(true, true)
             Constants.SHORTCUT_EXTENSIONS -> HomeScreen.Tab.Browse(true)
             Constants.SHORTCUT_DOWNLOADS -> {
                 navigator.popUntilRoot()
@@ -536,12 +547,26 @@ class MainActivity : BaseActivity() {
         return true
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+
+        ExternalIntents.externalIntents.animeId?.let {
+            outState.putLong(SAVED_STATE_ANIME_KEY, it)
+        }
+        ExternalIntents.externalIntents.episodeId?.let {
+            outState.putLong(SAVED_STATE_EPISODE_KEY, it)
+        }
+    }
+
     companion object {
         const val INTENT_SEARCH = "eu.kanade.tachiyomi.SEARCH"
         const val INTENT_ANIMESEARCH = "eu.kanade.tachiyomi.ANIMESEARCH"
         const val INTENT_SEARCH_QUERY = "query"
         const val INTENT_SEARCH_FILTER = "filter"
         const val INTENT_SEARCH_TYPE = "type"
+
+        const val SAVED_STATE_ANIME_KEY = "saved_state_anime_key"
+        const val SAVED_STATE_EPISODE_KEY = "saved_state_episode_key"
 
         private var externalPlayerResult: ActivityResultLauncher<Intent>? = null
 
@@ -551,7 +576,9 @@ class MainActivity : BaseActivity() {
             episodeId: Long,
             extPlayer: Boolean,
             video: Video? = null,
-            videoList: List<Video>? = null,
+            hosterIndex: Int = -1,
+            videoIndex: Int = -1,
+            hosterList: List<Hoster>? = null,
         ) {
             if (extPlayer) {
                 val intent = try {
@@ -564,7 +591,14 @@ class MainActivity : BaseActivity() {
                 externalPlayerResult?.launch(intent) ?: return
             } else {
                 context.startActivity(
-                    PlayerActivity.newIntent(context, animeId, episodeId, videoList, videoList?.indexOf(video)),
+                    PlayerActivity.newIntent(
+                        context,
+                        animeId,
+                        episodeId,
+                        hosterList,
+                        hosterIndex,
+                        videoIndex,
+                    ),
                 )
             }
         }

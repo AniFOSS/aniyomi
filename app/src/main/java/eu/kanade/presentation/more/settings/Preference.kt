@@ -7,11 +7,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.vector.ImageVector
 import eu.kanade.core.preference.asState
+import eu.kanade.presentation.more.settings.Preference.PreferenceItem
 import eu.kanade.tachiyomi.data.track.Tracker
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.coroutines.CoroutineScope
-import tachiyomi.core.common.storage.openFileDescriptor
+import mihon.core.archive.openFileDescriptor
 import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -200,6 +201,20 @@ sealed class Preference {
         ) : PreferenceItem<String>()
 
         /**
+         * A [PreferenceItem] that shows a EditText with a subtitle in the dialog.
+         * Unlike [EditTextPreference], empty values can be set and a subtitle in the dialog can be show.
+         */
+        data class EditTextInfoPreference(
+            val pref: PreferenceData<String>,
+            val dialogSubtitle: String?,
+            override val title: String,
+            override val subtitle: String? = "%s",
+            override val icon: ImageVector? = null,
+            override val enabled: Boolean = true,
+            override val onValueChanged: suspend (newValue: String) -> Boolean = { true },
+        ) : PreferenceItem<String>()
+
+        /**
          * A [PreferenceItem] for individual tracker.
          */
         data class TrackerPreference(
@@ -216,8 +231,8 @@ sealed class Preference {
 
         data class InfoPreference(
             override val title: String,
+            override val enabled: Boolean = true,
         ) : PreferenceItem<String>() {
-            override val enabled: Boolean = true
             override val subtitle: String? = null
             override val icon: ImageVector? = null
             override val onValueChanged: suspend (newValue: String) -> Boolean = { true }

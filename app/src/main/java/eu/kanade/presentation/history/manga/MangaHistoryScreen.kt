@@ -9,9 +9,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.tooling.preview.PreviewParameter
-import eu.kanade.presentation.components.relativeDateTimeText
+import eu.kanade.presentation.components.relativeDateText
 import eu.kanade.presentation.history.manga.components.MangaHistoryItem
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
+import eu.kanade.presentation.util.animateItemFastScroll
 import eu.kanade.tachiyomi.ui.history.manga.MangaHistoryScreenModel
 import tachiyomi.domain.history.manga.model.MangaHistoryWithRelations
 import tachiyomi.i18n.MR
@@ -20,7 +21,7 @@ import tachiyomi.presentation.core.components.ListGroupHeader
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
-import java.time.LocalDateTime
+import java.time.LocalDate
 
 @Composable
 fun MangaHistoryScreen(
@@ -84,14 +85,14 @@ private fun MangaHistoryScreenContent(
             when (item) {
                 is MangaHistoryUiModel.Header -> {
                     ListGroupHeader(
-                        modifier = Modifier.animateItem(),
-                        text = relativeDateTimeText(item.date),
+                        modifier = Modifier.animateItemFastScroll(),
+                        text = relativeDateText(item.date),
                     )
                 }
                 is MangaHistoryUiModel.Item -> {
                     val value = item.item
                     MangaHistoryItem(
-                        modifier = Modifier.animateItem(),
+                        modifier = Modifier.animateItemFastScroll(),
                         history = value,
                         onClickCover = { onClickCover(value) },
                         onClickResume = { onClickResume(value) },
@@ -104,7 +105,7 @@ private fun MangaHistoryScreenContent(
 }
 
 sealed interface MangaHistoryUiModel {
-    data class Header(val date: LocalDateTime) : MangaHistoryUiModel
+    data class Header(val date: LocalDate) : MangaHistoryUiModel
     data class Item(val item: MangaHistoryWithRelations) : MangaHistoryUiModel
 }
 

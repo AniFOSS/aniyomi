@@ -22,6 +22,7 @@ import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.track.AnimeTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.ui.player.loader.EpisodeLoader
+import eu.kanade.tachiyomi.ui.player.loader.HosterLoader
 import eu.kanade.tachiyomi.ui.player.settings.PlayerPreferences
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import eu.kanade.tachiyomi.util.system.isOnline
@@ -63,6 +64,9 @@ class ExternalIntents {
     lateinit var source: AnimeSource
     lateinit var episode: Episode
 
+    var animeId: Long? = null
+    var episodeId: Long? = null
+
     /**
      * Returns the [Intent] to be sent to an external player.
      *
@@ -72,19 +76,18 @@ class ExternalIntents {
      */
     suspend fun getExternalIntent(
         context: Context,
-        animeId: Long?,
-        episodeId: Long?,
+        animeId: Long,
+        episodeId: Long,
         chosenVideo: Video?,
     ): Intent? {
-        anime = getAnime.await(animeId!!) ?: return null
-        source = sourceManager.get(anime.source) ?: return null
-        episode = getEpisodesByAnimeId.await(anime.id).find { it.id == episodeId } ?: return null
+        if (!initAnime(animeId, episodeId)) return null
+        val hosters = EpisodeLoader.getHosters(episode, anime, source)
 
         val video = chosenVideo
-            ?: EpisodeLoader.getLinks(episode, anime, source).firstOrNull()
+            ?: HosterLoader.getBestVideo(source, hosters)
             ?: throw Exception("Video list is empty")
 
-        val videoUrl = getVideoUrl(context, video) ?: return null
+        val videoUrl = getVideoUrl(source, context, video) ?: return null
 
         val pkgName = playerPreferences.externalPlayerPreference().get()
 
@@ -99,18 +102,31 @@ class ExternalIntents {
         }
     }
 
+    suspend fun initAnime(animeId: Long, episodeId: Long): Boolean {
+        anime = getAnime.await(animeId) ?: return false
+        source = sourceManager.get(anime.source) ?: return false
+        episode = getEpisodesByAnimeId.await(anime.id).find { it.id == episodeId } ?: return false
+
+        this.animeId = animeId
+        this.episodeId = episodeId
+
+        return true
+    }
+
     /**
      * Returns the [Uri] of the given video.
      *
      * @param context the application context.
      * @param video the video being sent to the external player.
      */
-    private suspend fun getVideoUrl(context: Context, video: Video): Uri? {
-        if (video.videoUrl == null) {
-            makeErrorToast(context, Exception("Video URL is null."))
+    private suspend fun getVideoUrl(source: AnimeSource, context: Context, video: Video): Uri? {
+        val resolvedVideo = HosterLoader.getResolvedVideo(source, video)
+
+        if (resolvedVideo == null || resolvedVideo.videoUrl.isEmpty()) {
+            makeErrorToast(context, Exception("Video URL is empty."))
             return null
         } else {
-            val uri = video.videoUrl!!.toUri()
+            val uri = resolvedVideo.videoUrl.toUri()
 
             val isOnDevice = if (anime.source == LocalAnimeSource.ID) {
                 true
@@ -170,7 +186,7 @@ class ExternalIntents {
      */
     private fun getIntentForPackage(pkgName: String, context: Context, uri: Uri, video: Video): Intent {
         return when (pkgName) {
-            WebVideoCaster -> webVideoCasterIntent(pkgName, context, uri, video)
+            WEB_VIDEO_CASTER -> webVideoCasterIntent(pkgName, context, uri, video)
             else -> standardIntentForPackage(pkgName, context, uri, video)
         }
     }
@@ -178,7 +194,7 @@ class ExternalIntents {
     private fun webVideoCasterIntent(pkgName: String, context: Context, uri: Uri, video: Video): Intent {
         return Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "video/*")
-            if (isPackageInstalled(pkgName, context.packageManager)) setPackage(WebVideoCaster)
+            if (isPackageInstalled(pkgName, context.packageManager)) setPackage(WEB_VIDEO_CASTER)
             addExtrasAndFlags(true, this)
 
             val headers = Bundle()
@@ -300,17 +316,17 @@ class ExternalIntents {
      */
     private fun getComponent(packageName: String): ComponentName? {
         return when (packageName) {
-            MpvPlayer -> ComponentName(packageName, "$packageName.MPVActivity")
-            MxPlayer, MxPlayerFree, MxPlayerPro -> ComponentName(
+            MPV_PLAYER -> ComponentName(packageName, "$packageName.MPVActivity")
+            MX_PLAYER, MX_PLAYER_FREE, MX_PLAYER_PRO -> ComponentName(
                 packageName,
                 "$packageName.ActivityScreen",
             )
-            VlcPlayer -> ComponentName(packageName, "$packageName.gui.video.VideoPlayerActivity")
-            MpvKt, MpvKtPreview -> ComponentName(packageName, "live.mehiz.mpvkt.ui.player.PlayerActivity")
-            MpvRemote -> ComponentName(packageName, "$packageName.MainActivity")
-            JustPlayer -> ComponentName(packageName, "$packageName.PlayerActivity")
-            NextPlayer -> ComponentName(packageName, "$packageName.feature.player.PlayerActivity")
-            XPlayer -> ComponentName(packageName, "com.inshot.xplayer.activities.PlayerActivity")
+            VLC_PLAYER -> ComponentName(packageName, "$packageName.gui.video.VideoPlayerActivity")
+            MPV_KT, MPV_KT_PREVIEW -> ComponentName(packageName, "live.mehiz.mpvkt.ui.player.PlayerActivity")
+            MPV_REMOTE -> ComponentName(packageName, "$packageName.MainActivity")
+            JUST_PLAYER -> ComponentName(packageName, "$packageName.PlayerActivity")
+            NEXT_PLAYER -> ComponentName(packageName, "$packageName.feature.player.PlayerActivity")
+            X_PLAYER -> ComponentName(packageName, "com.inshot.xplayer.activities.PlayerActivity")
             else -> null
         }
     }
@@ -339,6 +355,8 @@ class ExternalIntents {
     @Suppress("DEPRECATION")
     fun onActivityResult(intent: Intent?) {
         val data = intent ?: return
+        if (animeId == null || episodeId == null) return
+
         val anime = anime
         val currentExtEpisode = episode
         val currentPosition: Long
@@ -497,8 +515,10 @@ class ExternalIntents {
             getTracks.await(anime.id)
                 .mapNotNull { track ->
                     val tracker = trackerManager.get(track.trackerId)
-                    if (tracker != null && tracker.isLoggedIn &&
-                        tracker is AnimeTracker && episodeNumber > track.lastEpisodeSeen
+                    if (tracker != null &&
+                        tracker.isLoggedIn &&
+                        tracker is AnimeTracker &&
+                        episodeNumber > track.lastEpisodeSeen
                     ) {
                         val updatedTrack = track.copy(lastEpisodeSeen = episodeNumber)
 
@@ -553,22 +573,22 @@ class ExternalIntents {
          * @param animeId the id of the anime.
          * @param episodeId the id of the episode.
          */
-        suspend fun newIntent(context: Context, animeId: Long?, episodeId: Long?, video: Video?): Intent? {
+        suspend fun newIntent(context: Context, animeId: Long, episodeId: Long, video: Video?): Intent? {
             return externalIntents.getExternalIntent(context, animeId, episodeId, video)
         }
     }
 }
 
 // List of supported external players and their packages
-const val MpvPlayer = "is.xyz.mpv"
-const val MxPlayer = "com.mxtech.videoplayer"
-const val MxPlayerFree = "com.mxtech.videoplayer.ad"
-const val MxPlayerPro = "com.mxtech.videoplayer.pro"
-const val VlcPlayer = "org.videolan.vlc"
-const val MpvKt = "live.mehiz.mpvkt"
-const val MpvKtPreview = "live.mehiz.mpvkt.preview"
-const val MpvRemote = "com.husudosu.mpvremote"
-const val JustPlayer = "com.brouken.player"
-const val NextPlayer = "dev.anilbeesetti.nextplayer"
-const val XPlayer = "video.player.videoplayer"
-const val WebVideoCaster = "com.instantbits.cast.webvideo"
+const val MPV_PLAYER = "is.xyz.mpv"
+const val MX_PLAYER = "com.mxtech.videoplayer"
+const val MX_PLAYER_FREE = "com.mxtech.videoplayer.ad"
+const val MX_PLAYER_PRO = "com.mxtech.videoplayer.pro"
+const val VLC_PLAYER = "org.videolan.vlc"
+const val MPV_KT = "live.mehiz.mpvkt"
+const val MPV_KT_PREVIEW = "live.mehiz.mpvkt.preview"
+const val MPV_REMOTE = "com.husudosu.mpvremote"
+const val JUST_PLAYER = "com.brouken.player"
+const val NEXT_PLAYER = "dev.anilbeesetti.nextplayer"
+const val X_PLAYER = "video.player.videoplayer"
+const val WEB_VIDEO_CASTER = "com.instantbits.cast.webvideo"

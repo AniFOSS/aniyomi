@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,12 +29,14 @@ import tachiyomi.domain.library.anime.model.sort
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.components.BaseSortItem
 import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.HeadingItem
 import tachiyomi.presentation.core.components.SettingsChipRow
 import tachiyomi.presentation.core.components.SliderItem
 import tachiyomi.presentation.core.components.SortItem
 import tachiyomi.presentation.core.components.TriStateItem
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 
@@ -167,23 +171,39 @@ private fun ColumnScope.SortPage(
     val sortingMode = category.sort.type
     val sortDescending = !category.sort.isAscending
 
-    val trackerSortOption = if (trackers.isEmpty()) {
-        emptyList()
-    } else {
-        listOf(MR.strings.action_sort_tracker_score to AnimeLibrarySort.Type.TrackerMean)
+    val options = remember(trackers.isEmpty()) {
+        val trackerMeanPair = if (trackers.isNotEmpty()) {
+            MR.strings.action_sort_tracker_score to AnimeLibrarySort.Type.TrackerMean
+        } else {
+            null
+        }
+        listOfNotNull(
+            MR.strings.action_sort_alpha to AnimeLibrarySort.Type.Alphabetical,
+            MR.strings.action_sort_total_episodes to AnimeLibrarySort.Type.TotalEpisodes,
+            MR.strings.action_sort_last_seen to AnimeLibrarySort.Type.LastSeen,
+            MR.strings.action_sort_last_anime_update to AnimeLibrarySort.Type.LastUpdate,
+            MR.strings.action_sort_unseen_count to AnimeLibrarySort.Type.UnseenCount,
+            MR.strings.action_sort_latest_episode to AnimeLibrarySort.Type.LatestEpisode,
+            MR.strings.action_sort_episode_fetch_date to AnimeLibrarySort.Type.EpisodeFetchDate,
+            MR.strings.action_sort_date_added to AnimeLibrarySort.Type.DateAdded,
+            trackerMeanPair,
+            MR.strings.action_sort_airing_time to AnimeLibrarySort.Type.AiringTime,
+            MR.strings.action_sort_random to AnimeLibrarySort.Type.Random,
+        )
     }
 
-    listOf(
-        MR.strings.action_sort_alpha to AnimeLibrarySort.Type.Alphabetical,
-        MR.strings.action_sort_total_episodes to AnimeLibrarySort.Type.TotalEpisodes,
-        MR.strings.action_sort_last_seen to AnimeLibrarySort.Type.LastSeen,
-        MR.strings.action_sort_last_anime_update to AnimeLibrarySort.Type.LastUpdate,
-        MR.strings.action_sort_unseen_count to AnimeLibrarySort.Type.UnseenCount,
-        MR.strings.action_sort_latest_episode to AnimeLibrarySort.Type.LatestEpisode,
-        MR.strings.action_sort_episode_fetch_date to AnimeLibrarySort.Type.EpisodeFetchDate,
-        MR.strings.action_sort_date_added to AnimeLibrarySort.Type.DateAdded,
-        MR.strings.action_sort_airing_time to AnimeLibrarySort.Type.AiringTime,
-    ).plus(trackerSortOption).map { (titleRes, mode) ->
+    options.map { (titleRes, mode) ->
+        if (mode == AnimeLibrarySort.Type.Random) {
+            BaseSortItem(
+                label = stringResource(titleRes),
+                icon = Icons.Default.Refresh
+                    .takeIf { sortingMode == AnimeLibrarySort.Type.Random },
+                onClick = {
+                    screenModel.setSort(category, mode, AnimeLibrarySort.Direction.Ascending)
+                },
+            )
+            return@map
+        }
         SortItem(
             label = stringResource(titleRes),
             sortDescending = sortDescending.takeIf { sortingMode == mode },
@@ -229,17 +249,29 @@ private fun ColumnScope.DisplayPage(
         }
     }
 
-    if (displayMode != LibraryDisplayMode.List) {
-        val configuration = LocalConfiguration.current
-        val columnPreference = remember {
-            if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                screenModel.libraryPreferences.animeLandscapeColumns()
-            } else {
-                screenModel.libraryPreferences.animePortraitColumns()
-            }
+    val configuration = LocalConfiguration.current
+    val columnPreference = remember {
+        if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            screenModel.libraryPreferences.animeLandscapeColumns()
+        } else {
+            screenModel.libraryPreferences.animePortraitColumns()
         }
+    }
 
-        val columns by columnPreference.collectAsState()
+    val columns by columnPreference.collectAsState()
+    if (displayMode == LibraryDisplayMode.List) {
+        SliderItem(
+            label = stringResource(MR.strings.pref_library_rows),
+            max = 10,
+            value = columns,
+            valueText = if (columns > 0) {
+                pluralStringResource(MR.plurals.pref_library_entries_in_column, columns, columns)
+            } else {
+                stringResource(MR.strings.label_default)
+            },
+            onChange = columnPreference::set,
+        )
+    } else {
         SliderItem(
             label = stringResource(MR.strings.pref_library_columns),
             max = 10,
